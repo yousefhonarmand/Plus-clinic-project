@@ -1,25 +1,22 @@
-import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   User,
   Phone,
-  CreditCard as CardIcon,
   Upload,
   Plus,
   Trash2,
   Eye,
   Check,
   MessageSquare,
-  Search,
   Building2,
   Stethoscope,
   Calendar,
-  Clock,
   Wallet,
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Patient, PatientDocument, Payment } from '@/lib/types';
+import { PatientWithPayments } from '@/hooks/usePatients';
 import {
   surgeries,
   doctors,
@@ -27,7 +24,6 @@ import {
   clinics,
   bankCards,
   timeSlots,
-  getSurgeryById,
 } from '@/lib/data';
 import {
   formatPersianDate,
@@ -71,9 +67,23 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/hooks/use-toast';
 
+interface PatientDocument {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+}
+
+interface Payment {
+  id: string;
+  amount: number;
+  cardId: string;
+  receiptImage?: string;
+}
+
 interface AdmissionFormProps {
-  onSubmit: (patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  editPatient?: Patient;
+  onSubmit: (data: any) => void;
+  editPatient?: PatientWithPayments;
   bookedSlots?: { [clinicId: string]: { [date: string]: string[] } };
 }
 
@@ -82,19 +92,58 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
   editPatient,
   bookedSlots = {},
 }) => {
+  // Parse edit patient data
+  const getInitialFirstName = () => {
+    if (!editPatient) return '';
+    const parts = editPatient.full_name.split(' ');
+    return parts[0] || '';
+  };
+
+  const getInitialLastName = () => {
+    if (!editPatient) return '';
+    const parts = editPatient.full_name.split(' ');
+    return parts.slice(1).join(' ') || '';
+  };
+
+  const getInitialSurgeryId = () => {
+    if (!editPatient) return '';
+    const surgery = surgeries.find(s => s.name === editPatient.surgery_type);
+    return surgery?.id || '';
+  };
+
+  const getInitialDoctorId = () => {
+    if (!editPatient) return '';
+    const doctor = doctors.find(d => d.name === editPatient.doctor);
+    return doctor?.id || '';
+  };
+
+  const getInitialConsultantId = () => {
+    if (!editPatient) return '';
+    const consultant = consultants.find(c => c.name === editPatient.consultant);
+    return consultant?.id || '';
+  };
+
+  const getInitialClinicId = () => {
+    if (!editPatient) return '';
+    const clinic = clinics.find(c => c.name === editPatient.clinic);
+    return clinic?.id || '';
+  };
+
   // Form state
-  const [firstName, setFirstName] = useState(editPatient?.firstName || '');
-  const [lastName, setLastName] = useState(editPatient?.lastName || '');
-  const [nationalId, setNationalId] = useState(editPatient?.nationalId || '');
+  const [firstName, setFirstName] = useState(getInitialFirstName());
+  const [lastName, setLastName] = useState(getInitialLastName());
+  const [nationalId, setNationalId] = useState(editPatient?.national_code || '');
   const [phone, setPhone] = useState(editPatient?.phone || '');
-  const [surgeryId, setSurgeryId] = useState(editPatient?.surgeryId || '');
-  const [surgeryDate, setSurgeryDate] = useState<Date>(editPatient?.surgeryDate || new Date());
-  const [doctorId, setDoctorId] = useState(editPatient?.doctorId || '');
-  const [consultantId, setConsultantId] = useState(editPatient?.consultantId || '');
-  const [clinicId, setClinicId] = useState(editPatient?.clinicId || '');
-  const [timeSlot, setTimeSlot] = useState(editPatient?.timeSlot || '');
-  const [documents, setDocuments] = useState<PatientDocument[]>(editPatient?.documents || []);
-  const [payments, setPayments] = useState<Payment[]>(editPatient?.payments || []);
+  const [surgeryId, setSurgeryId] = useState(getInitialSurgeryId());
+  const [surgeryDate, setSurgeryDate] = useState<Date>(
+    editPatient?.surgery_date ? new Date(editPatient.surgery_date) : new Date()
+  );
+  const [doctorId, setDoctorId] = useState(getInitialDoctorId());
+  const [consultantId, setConsultantId] = useState(getInitialConsultantId());
+  const [clinicId, setClinicId] = useState(getInitialClinicId());
+  const [timeSlot, setTimeSlot] = useState(editPatient?.surgery_time || '');
+  const [documents, setDocuments] = useState<PatientDocument[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
 
   // UI state
   const [surgeryOpen, setSurgeryOpen] = useState(false);
@@ -105,9 +154,11 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
   const [receiptPreview, setReceiptPreview] = useState<PatientDocument | null>(null);
 
   // Calculate totals
-  const selectedSurgery = getSurgeryById(surgeryId);
+  const selectedSurgery = surgeries.find(s => s.id === surgeryId);
   const totalPrice = selectedSurgery?.price || 0;
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const existingPaid = editPatient?.totalPaid || 0;
+  const newPaymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = existingPaid + newPaymentsTotal;
   const remainingBalance = totalPrice - totalPaid;
 
   // Get booked slots for selected clinic and date
@@ -140,13 +191,6 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
     return digits.slice(0, 11);
   };
 
-  // Format currency input
-  const formatCurrencyInput = (value: string): string => {
-    const digits = toEnglishNumber(value).replace(/\D/g, '');
-    if (!digits) return '';
-    return formatCurrency(parseInt(digits));
-  };
-
   // Add payment
   const addPayment = () => {
     if (!newPayment.cardId || !newPayment.amount) {
@@ -162,7 +206,6 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
       id: `payment-${Date.now()}`,
       amount: newPayment.amount,
       cardId: newPayment.cardId,
-      date: new Date(),
       receiptImage: newPaymentReceipt[0]?.url,
     };
 
@@ -209,13 +252,12 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
       return;
     }
 
-    const patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'> = {
+    const formData = {
       firstName,
       lastName,
       nationalId: toEnglishNumber(nationalId),
       phone: toEnglishNumber(phone),
       surgeryId,
-      surgeryPrice: totalPrice,
       surgeryDate,
       doctorId,
       consultantId,
@@ -223,12 +265,10 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
       timeSlot,
       documents,
       payments,
-      totalPaid,
-      remainingBalance,
-      status: totalPaid >= totalPrice ? 'paid' : totalPaid > 0 ? 'partial' : 'pending',
+      newPayments: payments,
     };
 
-    onSubmit(patient);
+    onSubmit(formData);
   };
 
   // Send SMS
@@ -412,7 +452,7 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
                     onDateSelect={(date) => {
                       setSurgeryDate(date);
                       setShowCalendar(false);
-                      setTimeSlot(''); // Reset time slot when date changes
+                      setTimeSlot('');
                     }}
                     minDate={new Date()}
                   />
@@ -567,10 +607,33 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
           </div>
         )}
 
-        {/* Existing Payments */}
+        {/* Existing Payments from database */}
+        {editPatient && editPatient.payments.length > 0 && (
+          <div className="space-y-3 mb-6">
+            <p className="text-sm font-medium text-muted-foreground">واریزی‌های قبلی</p>
+            {editPatient.payments.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex items-center justify-between p-3 bg-success/10 rounded-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="font-medium">{formatCurrency(payment.amount)} تومان</p>
+                    <p className="text-xs text-muted-foreground" dir="ltr">
+                      {payment.card_number} - {payment.card_holder}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground">{payment.date}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* New Payments */}
         {payments.length > 0 && (
           <div className="space-y-3 mb-6">
-            <p className="text-sm font-medium text-muted-foreground">واریزی‌های ثبت شده</p>
+            <p className="text-sm font-medium text-muted-foreground">واریزی‌های جدید</p>
             {payments.map((payment) => {
               const card = bankCards.find(c => c.id === payment.cardId);
               return (
@@ -658,6 +721,7 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
                 }}
                 placeholder="۱,۰۰۰,۰۰۰"
                 className="mt-1"
+                dir="ltr"
               />
             </div>
 
