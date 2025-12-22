@@ -60,8 +60,12 @@ export function formatCurrency(amount: number): string {
 }
 
 export function parseCurrency(str: string): number {
-  const english = toEnglishNumber(str.replace(/[,،]/g, ''));
-  return parseInt(english) || 0;
+  // Remove commas and convert Persian digits to English
+  const cleaned = str.replace(/[,،\s]/g, '');
+  const english = toEnglishNumber(cleaned);
+  // Use parseFloat for large numbers
+  const num = parseFloat(english);
+  return isNaN(num) ? 0 : Math.floor(num);
 }
 
 export function getDaysInPersianMonth(jy: number, jm: number): number {

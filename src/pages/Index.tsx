@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -7,10 +7,11 @@ import {
   BarChart3,
   Menu,
   X,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TabType, Patient } from '@/lib/types';
-import { generateSamplePatients } from '@/lib/data';
+import { usePatients, usePayments, PatientWithPayments } from '@/hooks/usePatients';
+import { useStorage } from '@/hooks/useStorage';
 import DashboardTab from '@/components/DashboardTab';
 import AdmissionForm from '@/components/AdmissionForm';
 import UpcomingSurgeriesTab from '@/components/UpcomingSurgeriesTab';
@@ -22,12 +23,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatPersianDate } from '@/lib/persianDate';
+import { surgeries, doctors, consultants, clinics, bankCards } from '@/lib/data';
+
+type TabType = 'dashboard' | 'admission' | 'upcoming' | 'reports';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [patients, setPatients] = useState<Patient[]>(generateSamplePatients());
-  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [editingPatient, setEditingPatient] = useState<PatientWithPayments | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { patients, loading, addPatient, updatePatient } = usePatients();
+  const { addPayment, deletePayment } = usePayments();
+  const { uploadDocument, uploadReceipt } = useStorage();
 
   const tabs = [
     { id: 'dashboard' as TabType, label: 'داشبورد', icon: LayoutDashboard },
@@ -36,42 +44,130 @@ const Index = () => {
     { id: 'reports' as TabType, label: 'گزارش‌دهی', icon: BarChart3 },
   ];
 
-  const handleAddPatient = (patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newPatient: Patient = {
-      ...patientData,
-      id: `patient-${Date.now()}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setPatients([...patients, newPatient]);
-    toast({
-      title: 'پذیرش موفق',
-      description: `بیمار ${newPatient.firstName} ${newPatient.lastName} با موفقیت ثبت شد`,
-    });
-    setActiveTab('dashboard');
+  const handleAddPatient = async (formData: any) => {
+    try {
+      // Get surgery info
+      const surgery = surgeries.find(s => s.id === formData.surgeryId);
+      const doctor = doctors.find(d => d.id === formData.doctorId);
+      const consultant = consultants.find(c => c.id === formData.consultantId);
+      const clinic = clinics.find(c => c.id === formData.clinicId);
+
+      if (!surgery || !doctor || !consultant || !clinic) {
+        toast({
+          title: 'خطا',
+          description: 'اطلاعات ناقص است',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Format surgery date as string (YYYY-MM-DD)
+      const surgeryDateStr = formData.surgeryDate instanceof Date 
+        ? formData.surgeryDate.toISOString().split('T')[0]
+        : formData.surgeryDate;
+
+      const newPatient = await addPatient({
+        fullName: `${formData.firstName} ${formData.lastName}`,
+        nationalCode: formData.nationalId,
+        phone: formData.phone,
+        surgeryType: surgery.name,
+        surgeryCost: surgery.price,
+        surgeryDate: surgeryDateStr,
+        surgeryTime: formData.timeSlot,
+        doctor: doctor.name,
+        consultant: consultant.name,
+        clinic: clinic.name,
+        documents: formData.documents?.map((d: any) => d.url) || [],
+      });
+
+      // Add payments if any
+      if (formData.payments && formData.payments.length > 0 && newPatient) {
+        for (const payment of formData.payments) {
+          const card = bankCards.find(c => c.id === payment.cardId);
+          if (card) {
+            await addPayment({
+              patientId: newPatient.id,
+              amount: payment.amount,
+              cardNumber: card.maskedNumber,
+              cardHolder: card.ownerName,
+              date: new Date().toISOString().split('T')[0],
+              receiptImage: payment.receiptImage,
+            });
+          }
+        }
+      }
+
+      setActiveTab('dashboard');
+    } catch (err) {
+      console.error('Error adding patient:', err);
+    }
   };
 
-  const handleEditPatient = (patient: Patient) => {
+  const handleEditPatient = (patient: PatientWithPayments) => {
     setEditingPatient(patient);
   };
 
-  const handleUpdatePatient = (patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleUpdatePatient = async (formData: any) => {
     if (!editingPatient) return;
-    
-    const updatedPatient: Patient = {
-      ...patientData,
-      id: editingPatient.id,
-      createdAt: editingPatient.createdAt,
-      updatedAt: new Date(),
-    };
-    
-    setPatients(patients.map(p => p.id === editingPatient.id ? updatedPatient : p));
-    setEditingPatient(null);
-    toast({
-      title: 'بروزرسانی موفق',
-      description: 'اطلاعات بیمار با موفقیت بروزرسانی شد',
-    });
+
+    try {
+      const surgery = surgeries.find(s => s.id === formData.surgeryId);
+      const doctor = doctors.find(d => d.id === formData.doctorId);
+      const consultant = consultants.find(c => c.id === formData.consultantId);
+      const clinic = clinics.find(c => c.id === formData.clinicId);
+
+      // Format surgery date as string (YYYY-MM-DD)
+      const surgeryDateStr = formData.surgeryDate instanceof Date 
+        ? formData.surgeryDate.toISOString().split('T')[0]
+        : formData.surgeryDate;
+
+      await updatePatient(editingPatient.id, {
+        fullName: `${formData.firstName} ${formData.lastName}`,
+        nationalCode: formData.nationalId,
+        phone: formData.phone,
+        surgeryType: surgery?.name,
+        surgeryCost: surgery?.price,
+        surgeryDate: surgeryDateStr,
+        surgeryTime: formData.timeSlot,
+        doctor: doctor?.name,
+        consultant: consultant?.name,
+        clinic: clinic?.name,
+        documents: formData.documents?.map((d: any) => d.url) || [],
+      });
+
+      // Handle new payments
+      if (formData.newPayments && formData.newPayments.length > 0) {
+        for (const payment of formData.newPayments) {
+          const card = bankCards.find(c => c.id === payment.cardId);
+          if (card) {
+            await addPayment({
+              patientId: editingPatient.id,
+              amount: payment.amount,
+              cardNumber: card.maskedNumber,
+              cardHolder: card.ownerName,
+              date: new Date().toISOString().split('T')[0],
+              receiptImage: payment.receiptImage,
+            });
+          }
+        }
+      }
+
+      setEditingPatient(null);
+    } catch (err) {
+      console.error('Error updating patient:', err);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">در حال بارگذاری...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
