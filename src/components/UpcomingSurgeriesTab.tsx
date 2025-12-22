@@ -9,26 +9,14 @@ import {
   User,
   Building2,
   Stethoscope,
-  CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Patient, FilterOptions } from '@/lib/types';
-import {
-  getSurgeryById,
-  getDoctorById,
-  getClinicById,
-  doctors,
-  clinics,
-  surgeries,
-} from '@/lib/data';
+import { PatientWithPayments } from '@/hooks/usePatients';
 import {
   formatPersianDate,
-  formatPersianDateFull,
   formatPersianDateWithDay,
   formatCurrency,
   toPersianNumber,
-  isToday,
-  isSameDay,
 } from '@/lib/persianDate';
 import PersianCalendar from '@/components/PersianCalendar';
 import { Input } from '@/components/ui/input';
@@ -49,8 +37,16 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface UpcomingSurgeriesTabProps {
-  patients: Patient[];
-  onEditPatient: (patient: Patient) => void;
+  patients: PatientWithPayments[];
+  onEditPatient: (patient: PatientWithPayments) => void;
+}
+
+interface FilterOptions {
+  startDate?: Date;
+  endDate?: Date;
+  doctor?: string;
+  clinic?: string;
+  status?: string;
 }
 
 const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
@@ -63,41 +59,51 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
   const [startDateOpen, setStartDateOpen] = useState(false);
   const [endDateOpen, setEndDateOpen] = useState(false);
 
+  // Get unique doctors and clinics from patients
+  const uniqueDoctors = useMemo(() => {
+    const set = new Set(patients.map(p => p.doctor));
+    return Array.from(set);
+  }, [patients]);
+
+  const uniqueClinics = useMemo(() => {
+    const set = new Set(patients.map(p => p.clinic));
+    return Array.from(set);
+  }, [patients]);
+
   // Filter and sort patients
   const filteredPatients = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
     let result = [...patients];
 
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(p =>
-        `${p.firstName} ${p.lastName}`.toLowerCase().includes(query) ||
-        p.nationalId.includes(query) ||
+        p.full_name.toLowerCase().includes(query) ||
+        p.national_code.includes(query) ||
         p.phone.includes(query)
       );
     }
 
     // Date range filter
     if (filters.startDate) {
-      result = result.filter(p => p.surgeryDate >= filters.startDate!);
+      const startStr = filters.startDate.toISOString().split('T')[0];
+      result = result.filter(p => p.surgery_date >= startStr);
     }
     if (filters.endDate) {
-      result = result.filter(p => p.surgeryDate <= filters.endDate!);
+      const endStr = filters.endDate.toISOString().split('T')[0];
+      result = result.filter(p => p.surgery_date <= endStr);
     }
 
     // Doctor filter
-    if (filters.doctorId) {
-      result = result.filter(p => p.doctorId === filters.doctorId);
+    if (filters.doctor) {
+      result = result.filter(p => p.doctor === filters.doctor);
     }
 
     // Clinic filter
-    if (filters.clinicId) {
-      result = result.filter(p => p.clinicId === filters.clinicId);
-    }
-
-    // Surgery filter
-    if (filters.surgeryId) {
-      result = result.filter(p => p.surgeryId === filters.surgeryId);
+    if (filters.clinic) {
+      result = result.filter(p => p.clinic === filters.clinic);
     }
 
     // Status filter
@@ -107,11 +113,11 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
 
     // Sort by date (today first, then chronological)
     result.sort((a, b) => {
-      const aIsToday = isToday(a.surgeryDate);
-      const bIsToday = isToday(b.surgeryDate);
+      const aIsToday = a.surgery_date === todayStr;
+      const bIsToday = b.surgery_date === todayStr;
       if (aIsToday && !bIsToday) return -1;
       if (!aIsToday && bIsToday) return 1;
-      return a.surgeryDate.getTime() - b.surgeryDate.getTime();
+      return a.surgery_date.localeCompare(b.surgery_date);
     });
 
     return result;
@@ -119,9 +125,9 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
 
   // Group by date
   const groupedPatients = useMemo(() => {
-    const groups: { [key: string]: Patient[] } = {};
+    const groups: { [key: string]: PatientWithPayments[] } = {};
     filteredPatients.forEach(patient => {
-      const dateKey = patient.surgeryDate.toISOString().split('T')[0];
+      const dateKey = patient.surgery_date;
       if (!groups[dateKey]) {
         groups[dateKey] = [];
       }
@@ -136,6 +142,7 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
   };
 
   const hasActiveFilters = searchQuery || Object.values(filters).some(v => v);
+  const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <div className="space-y-6">
@@ -220,21 +227,21 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t"
+            className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t"
           >
             <div>
               <Label>پزشک</Label>
               <Select
-                value={filters.doctorId || ''}
-                onValueChange={(v) => setFilters({ ...filters, doctorId: v || undefined })}
+                value={filters.doctor || ''}
+                onValueChange={(v) => setFilters({ ...filters, doctor: v || undefined })}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="همه پزشکان" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">همه پزشکان</SelectItem>
-                  {doctors.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  {uniqueDoctors.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -243,34 +250,16 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
             <div>
               <Label>مطب</Label>
               <Select
-                value={filters.clinicId || ''}
-                onValueChange={(v) => setFilters({ ...filters, clinicId: v || undefined })}
+                value={filters.clinic || ''}
+                onValueChange={(v) => setFilters({ ...filters, clinic: v || undefined })}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="همه مطب‌ها" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">همه مطب‌ها</SelectItem>
-                  {clinics.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>نوع جراحی</Label>
-              <Select
-                value={filters.surgeryId || ''}
-                onValueChange={(v) => setFilters({ ...filters, surgeryId: v || undefined })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="همه جراحی‌ها" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">همه جراحی‌ها</SelectItem>
-                  {surgeries.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  {uniqueClinics.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -310,7 +299,7 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
           {Object.keys(groupedPatients).length > 0 ? (
             Object.entries(groupedPatients).map(([dateKey, datePatients]) => {
               const date = new Date(dateKey);
-              const isTodayDate = isToday(date);
+              const isTodayDate = dateKey === todayStr;
 
               return (
                 <motion.div
@@ -340,105 +329,99 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
                   {/* Patients for this date */}
                   <div className="space-y-3">
                     {datePatients
-                      .sort((a, b) => a.timeSlot.localeCompare(b.timeSlot))
-                      .map((patient, index) => {
-                        const surgery = getSurgeryById(patient.surgeryId);
-                        const doctor = getDoctorById(patient.doctorId);
-                        const clinic = getClinicById(patient.clinicId);
-
-                        return (
-                          <motion.div
-                            key={patient.id}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                            className={cn(
-                              "patient-row",
-                              patient.status === 'paid' && "border-l-4 border-l-success",
-                              patient.status === 'partial' && "border-l-4 border-l-warning",
-                            )}
-                          >
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                              {/* Patient Info */}
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                  <User className="w-6 h-6 text-primary" />
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold">
-                                    {patient.firstName} {patient.lastName}
-                                  </h4>
-                                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-3.5 h-3.5" />
-                                      {patient.timeSlot}
-                                    </span>
-                                    <span>•</span>
-                                    <span className="flex items-center gap-1">
-                                      <Stethoscope className="w-3.5 h-3.5" />
-                                      {surgery?.name}
-                                    </span>
-                                  </div>
-                                </div>
+                      .sort((a, b) => (a.surgery_time || '').localeCompare(b.surgery_time || ''))
+                      .map((patient, index) => (
+                        <motion.div
+                          key={patient.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                          className={cn(
+                            "patient-row",
+                            patient.status === 'paid' && "border-l-4 border-l-success",
+                            patient.status === 'partial' && "border-l-4 border-l-warning",
+                          )}
+                        >
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            {/* Patient Info */}
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <User className="w-6 h-6 text-primary" />
                               </div>
-
-                              {/* Details */}
-                              <div className="flex flex-wrap items-center gap-4 text-sm">
-                                <div className="flex items-center gap-1.5">
-                                  <User className="w-4 h-4 text-muted-foreground" />
-                                  <span>{doctor?.name}</span>
+                              <div>
+                                <h4 className="font-semibold">
+                                  {patient.full_name}
+                                </h4>
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {patient.surgery_time || '-'}
+                                  </span>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <Stethoscope className="w-3.5 h-3.5" />
+                                    {patient.surgery_type}
+                                  </span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Building2 className="w-4 h-4 text-muted-foreground" />
-                                  <span>{clinic?.name}</span>
-                                </div>
-                              </div>
-
-                              {/* Payment & Actions */}
-                              <div className="flex items-center gap-4">
-                                <div className="text-left min-w-[100px]">
-                                  <p className="text-xs text-muted-foreground">مبلغ جراحی</p>
-                                  <p className="font-semibold">
-                                    {formatCurrency(patient.surgeryPrice)}
-                                  </p>
-                                </div>
-                                <div className="text-left min-w-[80px]">
-                                  <p className="text-xs text-muted-foreground">پرداختی</p>
-                                  <p className="font-semibold text-success">
-                                    {formatCurrency(patient.totalPaid)}
-                                  </p>
-                                </div>
-                                {patient.remainingBalance > 0 && (
-                                  <div className="text-left min-w-[80px]">
-                                    <p className="text-xs text-muted-foreground">باقی‌مانده</p>
-                                    <p className="font-semibold text-warning">
-                                      {formatCurrency(patient.remainingBalance)}
-                                    </p>
-                                  </div>
-                                )}
-                                <span className={cn(
-                                  patient.status === 'paid' && "badge-success",
-                                  patient.status === 'partial' && "badge-warning",
-                                  patient.status === 'pending' && "badge-primary",
-                                )}>
-                                  {patient.status === 'paid' && 'تسویه'}
-                                  {patient.status === 'partial' && 'بیعانه'}
-                                  {patient.status === 'pending' && 'در انتظار'}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => onEditPatient(patient)}
-                                  className="gap-2"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                  ویرایش
-                                </Button>
                               </div>
                             </div>
-                          </motion.div>
-                        );
-                      })}
+
+                            {/* Details */}
+                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-4 h-4 text-muted-foreground" />
+                                <span>{patient.doctor}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-4 h-4 text-muted-foreground" />
+                                <span>{patient.clinic}</span>
+                              </div>
+                            </div>
+
+                            {/* Payment & Actions */}
+                            <div className="flex items-center gap-4">
+                              <div className="text-left min-w-[100px]">
+                                <p className="text-xs text-muted-foreground">مبلغ جراحی</p>
+                                <p className="font-semibold">
+                                  {formatCurrency(patient.surgery_cost)}
+                                </p>
+                              </div>
+                              <div className="text-left min-w-[80px]">
+                                <p className="text-xs text-muted-foreground">پرداختی</p>
+                                <p className="font-semibold text-success">
+                                  {formatCurrency(patient.totalPaid)}
+                                </p>
+                              </div>
+                              {patient.remainingBalance > 0 && (
+                                <div className="text-left min-w-[80px]">
+                                  <p className="text-xs text-muted-foreground">باقی‌مانده</p>
+                                  <p className="font-semibold text-warning">
+                                    {formatCurrency(patient.remainingBalance)}
+                                  </p>
+                                </div>
+                              )}
+                              <span className={cn(
+                                patient.status === 'paid' && "badge-success",
+                                patient.status === 'partial' && "badge-warning",
+                                patient.status === 'pending' && "badge-primary",
+                              )}>
+                                {patient.status === 'paid' && 'تسویه'}
+                                {patient.status === 'partial' && 'بیعانه'}
+                                {patient.status === 'pending' && 'در انتظار'}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onEditPatient(patient)}
+                                className="gap-2"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                                ویرایش
+                              </Button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
                   </div>
                 </motion.div>
               );
@@ -446,8 +429,12 @@ const UpcomingSurgeriesTab: React.FC<UpcomingSurgeriesTabProps> = ({
           ) : (
             <div className="text-center py-16 text-muted-foreground">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">جراحی‌ای یافت نشد</p>
-              <p className="text-sm mt-1">فیلترها را تغییر دهید یا بیمار جدید اضافه کنید</p>
+              <p className="text-lg">جراحی‌ای یافت نشد</p>
+              {hasActiveFilters && (
+                <Button variant="link" onClick={clearFilters} className="mt-2">
+                  پاک کردن فیلترها
+                </Button>
+              )}
             </div>
           )}
         </div>
