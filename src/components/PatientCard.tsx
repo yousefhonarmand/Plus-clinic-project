@@ -1,15 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Edit2, Clock, User, Stethoscope, CreditCard } from 'lucide-react';
+import { Edit2, Clock, User, Stethoscope } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Patient } from '@/lib/types';
-import { getSurgeryById, getDoctorById, getClinicById } from '@/lib/data';
-import { formatPersianDateFull, formatCurrency, toPersianNumber } from '@/lib/persianDate';
+import { PatientWithPayments } from '@/hooks/usePatients';
+import { formatCurrency } from '@/lib/persianDate';
 import { Button } from '@/components/ui/button';
 
 interface PatientCardProps {
-  patient: Patient;
-  onEdit: (patient: Patient) => void;
+  patient: PatientWithPayments;
+  onEdit: (patient: PatientWithPayments) => void;
   index?: number;
   compact?: boolean;
   className?: string;
@@ -22,10 +21,6 @@ const PatientCard: React.FC<PatientCardProps> = ({
   compact = false,
   className,
 }) => {
-  const surgery = getSurgeryById(patient.surgeryId);
-  const doctor = getDoctorById(patient.doctorId);
-  const clinic = getClinicById(patient.clinicId);
-
   const statusColors = {
     paid: 'badge-success',
     partial: 'badge-warning',
@@ -37,6 +32,8 @@ const PatientCard: React.FC<PatientCardProps> = ({
     partial: 'بیعانه',
     pending: 'در انتظار',
   };
+
+  const status = patient.status as 'paid' | 'partial' | 'pending';
 
   return (
     <motion.div
@@ -53,11 +50,11 @@ const PatientCard: React.FC<PatientCardProps> = ({
           </div>
           <div>
             <h4 className="font-semibold text-lg">
-              {patient.firstName} {patient.lastName}
+              {patient.full_name}
             </h4>
             <p className="text-sm text-muted-foreground flex items-center gap-2">
               <Stethoscope className="w-4 h-4" />
-              {surgery?.name}
+              {patient.surgery_type}
             </p>
           </div>
         </div>
@@ -67,12 +64,12 @@ const PatientCard: React.FC<PatientCardProps> = ({
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Clock className="w-4 h-4" />
-              <span>{patient.timeSlot}</span>
+              <span>{patient.surgery_time || '-'}</span>
             </div>
             <span className="text-muted-foreground">|</span>
-            <span>{doctor?.name}</span>
+            <span>{patient.doctor}</span>
             <span className="text-muted-foreground">|</span>
-            <span>{clinic?.name}</span>
+            <span>{patient.clinic}</span>
           </div>
         )}
 
@@ -94,8 +91,8 @@ const PatientCard: React.FC<PatientCardProps> = ({
             </div>
           )}
 
-          <span className={cn(statusColors[patient.status])}>
-            {statusText[patient.status]}
+          <span className={cn(statusColors[status])}>
+            {statusText[status]}
           </span>
 
           <Button

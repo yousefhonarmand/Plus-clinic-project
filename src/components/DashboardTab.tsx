@@ -6,50 +6,58 @@ import {
   Clock, 
   CreditCard, 
   Wallet,
-  ChevronLeft,
 } from 'lucide-react';
-import { Patient } from '@/lib/types';
+import { PatientWithPayments } from '@/hooks/usePatients';
 import { 
-  formatPersianDateFull, 
   formatPersianDateWithDay,
   formatCurrency, 
   toPersianNumber,
-  isToday,
-  getNextWeekRange,
-  isDateInRange,
+  isSameDay,
+  addDays,
 } from '@/lib/persianDate';
 import StatCard from '@/components/StatCard';
 import PatientCard from '@/components/PatientCard';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface DashboardTabProps {
-  patients: Patient[];
-  onEditPatient: (patient: Patient) => void;
+  patients: PatientWithPayments[];
+  onEditPatient: (patient: PatientWithPayments) => void;
 }
 
 const DashboardTab: React.FC<DashboardTabProps> = ({ patients, onEditPatient }) => {
   const today = new Date();
-  const nextWeekRange = getNextWeekRange();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Helper to check if a date string is today
+  const isToday = (dateStr: string) => {
+    return dateStr === todayStr;
+  };
+
+  // Helper to check if date is in next week range
+  const isInNextWeek = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const tomorrow = addDays(today, 1);
+    const nextWeekEnd = addDays(today, 7);
+    return date >= tomorrow && date <= nextWeekEnd;
+  };
 
   // Calculate statistics
-  const todayPatients = patients.filter(p => isToday(p.surgeryDate));
-  const weekPatients = patients.filter(p => 
-    isDateInRange(p.surgeryDate, nextWeekRange.start, nextWeekRange.end)
-  );
+  const todayPatients = patients.filter(p => isToday(p.surgery_date));
+  const weekPatients = patients.filter(p => isInNextWeek(p.surgery_date));
   
   const pendingTodayPatients = todayPatients.filter(p => p.status !== 'paid');
   const pendingWeekPatients = weekPatients.filter(p => p.status !== 'paid');
   
-  const todayPayments = todayPatients.reduce((sum, p) => {
+  const todayPayments = patients.reduce((sum, p) => {
     const todayPayment = p.payments
-      .filter(pay => isToday(pay.date))
+      .filter(pay => pay.date === todayStr)
       .reduce((s, pay) => s + pay.amount, 0);
     return sum + todayPayment;
   }, 0);
 
   // Sort week patients by date
   const sortedWeekPatients = [...weekPatients].sort(
-    (a, b) => a.surgeryDate.getTime() - b.surgeryDate.getTime()
+    (a, b) => new Date(a.surgery_date).getTime() - new Date(b.surgery_date).getTime()
   );
 
   return (
@@ -122,7 +130,7 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ patients, onEditPatient }) 
             <div className="space-y-3">
               {todayPatients.length > 0 ? (
                 todayPatients
-                  .sort((a, b) => a.timeSlot.localeCompare(b.timeSlot))
+                  .sort((a, b) => (a.surgery_time || '').localeCompare(b.surgery_time || ''))
                   .map((patient, index) => (
                     <PatientCard
                       key={patient.id}
@@ -166,12 +174,11 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ patients, onEditPatient }) 
                   <div key={patient.id}>
                     {/* Date header if different from previous */}
                     {(index === 0 || 
-                      patient.surgeryDate.toDateString() !== 
-                      sortedWeekPatients[index - 1].surgeryDate.toDateString()) && (
+                      patient.surgery_date !== sortedWeekPatients[index - 1].surgery_date) && (
                       <div className="flex items-center gap-2 mb-2 mt-4 first:mt-0">
                         <div className="h-px flex-1 bg-border" />
                         <span className="text-xs font-medium text-muted-foreground px-2">
-                          {formatPersianDateWithDay(patient.surgeryDate)}
+                          {formatPersianDateWithDay(new Date(patient.surgery_date))}
                         </span>
                         <div className="h-px flex-1 bg-border" />
                       </div>
