@@ -5,6 +5,7 @@ import { toast } from '@/hooks/use-toast';
 export function useStorage() {
   const [uploading, setUploading] = useState(false);
 
+  // Upload document and return file path (not public URL)
   const uploadDocument = async (file: File, patientId: string): Promise<string | null> => {
     try {
       setUploading(true);
@@ -18,11 +19,8 @@ export function useStorage() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('patient-documents')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
+      // Return file path, not public URL - will use signed URLs for viewing
+      return fileName;
     } catch (err: any) {
       console.error('Error uploading document:', err);
       toast({
@@ -36,6 +34,7 @@ export function useStorage() {
     }
   };
 
+  // Upload receipt and return file path (not public URL)
   const uploadReceipt = async (file: File, patientId: string): Promise<string | null> => {
     try {
       setUploading(true);
@@ -49,11 +48,8 @@ export function useStorage() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('payment-receipts')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
+      // Return file path, not public URL - will use signed URLs for viewing
+      return fileName;
     } catch (err: any) {
       console.error('Error uploading receipt:', err);
       toast({
@@ -64,6 +60,26 @@ export function useStorage() {
       return null;
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Get signed URL for viewing files (1 hour expiry)
+  const getSignedUrl = async (bucket: string, path: string): Promise<string | null> => {
+    try {
+      // Skip if path is already a full URL (blob: or http:)
+      if (path.startsWith('blob:') || path.startsWith('http')) {
+        return path;
+      }
+      
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 3600); // 1 hour expiry
+      
+      if (error) throw error;
+      return data.signedUrl;
+    } catch (err: any) {
+      console.error('Error getting signed URL:', err);
+      return null;
     }
   };
 
@@ -85,6 +101,7 @@ export function useStorage() {
     uploading,
     uploadDocument,
     uploadReceipt,
+    getSignedUrl,
     deleteFile,
   };
 }
