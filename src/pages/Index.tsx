@@ -8,10 +8,12 @@ import {
   Menu,
   X,
   Loader2,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePatients, usePayments, PatientWithPayments } from '@/hooks/usePatients';
 import { useStorage } from '@/hooks/useStorage';
+import { useAuth } from '@/hooks/useAuth';
 import DashboardTab from '@/components/DashboardTab';
 import AdmissionForm from '@/components/AdmissionForm';
 import UpcomingSurgeriesTab from '@/components/UpcomingSurgeriesTab';
@@ -23,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { formatPersianDate } from '@/lib/persianDate';
 import { surgeries, doctors, consultants, clinics, bankCards } from '@/lib/data';
 
@@ -36,6 +39,18 @@ const Index = () => {
   const { patients, loading, addPatient, updatePatient } = usePatients();
   const { addPayment, deletePayment } = usePayments();
   const { uploadDocument, uploadReceipt } = useStorage();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        title: 'خطا در خروج',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
 
   const tabs = [
     { id: 'dashboard' as TabType, label: 'داشبورد', icon: LayoutDashboard },
@@ -202,6 +217,15 @@ const Index = () => {
                   {tab.label}
                 </button>
               ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                className="mr-2 text-muted-foreground hover:text-destructive"
+              >
+                <LogOut className="w-4 h-4 ml-1" />
+                خروج
+              </Button>
             </nav>
           </div>
 
