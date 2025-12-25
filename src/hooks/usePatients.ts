@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { formatPersianDate, toGregorianDate, toPersianDate } from '@/lib/persianDate';
+import { useAuth } from './useAuth';
 
 export interface DbPatient {
   id: string;
@@ -20,6 +21,7 @@ export interface DbPatient {
   status: string;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
 }
 
 export interface DbPayment {
@@ -43,6 +45,7 @@ export function usePatients() {
   const [patients, setPatients] = useState<PatientWithPayments[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const fetchPatients = useCallback(async () => {
     try {
@@ -153,6 +156,7 @@ export function usePatients() {
           documents: patientData.documents || [],
           notes: patientData.notes || null,
           status: 'pending',
+          created_by: user?.id || null,
         })
         .select()
         .single();

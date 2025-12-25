@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,31 +10,18 @@ import { toast } from '@/hooks/use-toast';
 import { z } from 'zod';
 
 const loginSchema = z.object({
-  email: z.string().email('ایمیل نامعتبر است'),
+  username: z.string().min(1, 'نام کاربری الزامی است'),
   password: z.string().min(6, 'رمز عبور باید حداقل ۶ کاراکتر باشد'),
-});
-
-const signupSchema = z.object({
-  fullName: z.string().min(2, 'نام باید حداقل ۲ کاراکتر باشد'),
-  email: z.string().email('ایمیل نامعتبر است'),
-  password: z.string().min(6, 'رمز عبور باید حداقل ۶ کاراکتر باشد'),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'رمز عبور و تکرار آن مطابقت ندارند',
-  path: ['confirmPassword'],
 });
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const { user, loading, signIn, signUp } = useAuth();
+  const { user, loading, signIn } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,11 +32,7 @@ const Auth = () => {
 
   const validateForm = () => {
     try {
-      if (isLogin) {
-        loginSchema.parse({ email, password });
-      } else {
-        signupSchema.parse({ fullName, email, password, confirmPassword });
-      }
+      loginSchema.parse({ username, password });
       setErrors({});
       return true;
     } catch (err) {
@@ -74,55 +57,29 @@ const Auth = () => {
     setIsSubmitting(true);
 
     try {
-      if (isLogin) {
-        const { error } = await signIn(email, password);
-        if (error) {
-          if (error.message.includes('Invalid login credentials')) {
-            toast({
-              title: 'خطا در ورود',
-              description: 'ایمیل یا رمز عبور اشتباه است',
-              variant: 'destructive',
-            });
-          } else {
-            toast({
-              title: 'خطا در ورود',
-              description: error.message,
-              variant: 'destructive',
-            });
-          }
+      // Convert username to email format for Supabase
+      const email = `${username.toLowerCase()}@clinic.local`;
+      
+      const { error } = await signIn(email, password);
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          toast({
+            title: 'خطا در ورود',
+            description: 'نام کاربری یا رمز عبور اشتباه است',
+            variant: 'destructive',
+          });
         } else {
           toast({
-            title: 'ورود موفق',
-            description: 'به سیستم خوش آمدید',
+            title: 'خطا در ورود',
+            description: error.message,
+            variant: 'destructive',
           });
         }
       } else {
-        const { error, data } = await signUp(email, password, fullName);
-        if (error) {
-          if (error.message.includes('User already registered')) {
-            toast({
-              title: 'خطا در ثبت‌نام',
-              description: 'این ایمیل قبلاً ثبت شده است. لطفاً وارد شوید.',
-              variant: 'destructive',
-            });
-          } else {
-            toast({
-              title: 'خطا در ثبت‌نام',
-              description: error.message,
-              variant: 'destructive',
-            });
-          }
-        } else if (data.user && !data.session) {
-          toast({
-            title: 'ثبت‌نام موفق',
-            description: 'لطفاً ایمیل خود را برای تأیید حساب بررسی کنید',
-          });
-        } else {
-          toast({
-            title: 'ثبت‌نام موفق',
-            description: 'حساب شما ایجاد شد',
-          });
-        }
+        toast({
+          title: 'ورود موفق',
+          description: 'به سیستم خوش آمدید',
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -150,47 +107,27 @@ const Auth = () => {
               سیستم مدیریت کلینیک جراحی
             </h1>
             <p className="text-muted-foreground">
-              {isLogin ? 'وارد حساب خود شوید' : 'حساب جدید ایجاد کنید'}
+              وارد حساب خود شوید
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">نام کامل</Label>
-                <div className="relative">
-                  <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="fullName"
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="نام و نام خانوادگی"
-                    className="pr-10"
-                  />
-                </div>
-                {errors.fullName && (
-                  <p className="text-sm text-destructive">{errors.fullName}</p>
-                )}
-              </div>
-            )}
-
             <div className="space-y-2">
-              <Label htmlFor="email">ایمیل</Label>
+              <Label htmlFor="username">نام کاربری</Label>
               <div className="relative">
-                <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="example@email.com"
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="نام کاربری خود را وارد کنید"
                   className="pr-10"
                   dir="ltr"
                 />
               </div>
-              {errors.email && (
-                <p className="text-sm text-destructive">{errors.email}</p>
+              {errors.username && (
+                <p className="text-sm text-destructive">{errors.username}</p>
               )}
             </div>
 
@@ -220,27 +157,6 @@ const Auth = () => {
               )}
             </div>
 
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">تکرار رمز عبور</Label>
-                <div className="relative">
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="confirmPassword"
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="pr-10"
-                    dir="ltr"
-                  />
-                </div>
-                {errors.confirmPassword && (
-                  <p className="text-sm text-destructive">{errors.confirmPassword}</p>
-                )}
-              </div>
-            )}
-
             <Button
               type="submit"
               className="w-full"
@@ -249,29 +165,10 @@ const Auth = () => {
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin ml-2" />
               ) : null}
-              {isLogin ? 'ورود' : 'ثبت‌نام'}
+              ورود
             </Button>
           </form>
-
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setErrors({});
-              }}
-              className="text-sm text-primary hover:underline"
-            >
-              {isLogin
-                ? 'حساب ندارید؟ ثبت‌نام کنید'
-                : 'قبلاً ثبت‌نام کرده‌اید؟ وارد شوید'}
-            </button>
-          </div>
         </div>
-
-        <p className="text-center text-xs text-muted-foreground mt-4">
-          برای تست سریع‌تر، می‌توانید تأیید ایمیل را در تنظیمات Supabase غیرفعال کنید
-        </p>
       </motion.div>
     </div>
   );
