@@ -158,7 +158,8 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
   const totalPrice = selectedSurgery?.price || 0;
   const existingPaid = editPatient?.totalPaid || 0;
   const newPaymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-  const totalPaid = existingPaid + newPaymentsTotal;
+  const currentInputAmount = newPayment.amount || 0;
+  const totalPaid = existingPaid + newPaymentsTotal + currentInputAmount;
   const remainingBalance = totalPrice - totalPaid;
 
   // Get booked slots for selected clinic and date
@@ -714,6 +715,8 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
             <div>
               <Label>مبلغ واریزی</Label>
               <Input
+                type="text"
+                inputMode="numeric"
                 value={newPayment.amount ? formatCurrency(newPayment.amount) : ''}
                 onChange={(e) => {
                   const value = parseCurrency(e.target.value);
@@ -723,6 +726,16 @@ const AdmissionForm: React.FC<AdmissionFormProps> = ({
                 className="mt-1"
                 dir="ltr"
               />
+              {currentInputAmount > 0 && remainingBalance >= 0 && (
+                <p className="text-xs text-success mt-1">
+                  باقیمانده پس از این واریز: {formatCurrency(remainingBalance)} تومان
+                </p>
+              )}
+              {currentInputAmount > 0 && remainingBalance < 0 && (
+                <p className="text-xs text-warning mt-1">
+                  اضافه پرداخت: {formatCurrency(Math.abs(remainingBalance))} تومان
+                </p>
+              )}
             </div>
 
             {/* Receipt Upload */}
