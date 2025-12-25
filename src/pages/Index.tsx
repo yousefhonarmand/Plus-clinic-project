@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { usePatients, usePayments, PatientWithPayments } from '@/hooks/usePatients';
 import { useStorage } from '@/hooks/useStorage';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserRole } from '@/hooks/useUserRole';
 import DashboardTab from '@/components/DashboardTab';
 import AdmissionForm from '@/components/AdmissionForm';
 import UpcomingSurgeriesTab from '@/components/UpcomingSurgeriesTab';
@@ -40,6 +41,7 @@ const Index = () => {
   const { addPayment, deletePayment } = usePayments();
   const { uploadDocument, uploadReceipt } = useStorage();
   const { user, signOut } = useAuth();
+  const { canViewReports, loading: roleLoading } = useUserRole();
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -52,12 +54,20 @@ const Index = () => {
     }
   };
 
-  const tabs = [
-    { id: 'dashboard' as TabType, label: 'داشبورد', icon: LayoutDashboard },
-    { id: 'admission' as TabType, label: 'پذیرش بیمار', icon: UserPlus },
-    { id: 'upcoming' as TabType, label: 'جراحی‌های پیش رو', icon: Calendar },
-    { id: 'reports' as TabType, label: 'گزارش‌دهی', icon: BarChart3 },
-  ];
+  const tabs = useMemo(() => {
+    const baseTabs = [
+      { id: 'dashboard' as TabType, label: 'داشبورد', icon: LayoutDashboard },
+      { id: 'admission' as TabType, label: 'پذیرش بیمار', icon: UserPlus },
+      { id: 'upcoming' as TabType, label: 'جراحی‌های پیش رو', icon: Calendar },
+    ];
+    
+    // Only show reports tab for admin and receptionist
+    if (canViewReports) {
+      baseTabs.push({ id: 'reports' as TabType, label: 'گزارش‌دهی', icon: BarChart3 });
+    }
+    
+    return baseTabs;
+  }, [canViewReports]);
 
   const handleAddPatient = async (formData: any) => {
     try {
@@ -173,7 +183,7 @@ const Index = () => {
     }
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

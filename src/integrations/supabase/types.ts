@@ -19,6 +19,7 @@ export type Database = {
           clinic: string
           consultant: string
           created_at: string
+          created_by: string | null
           doctor: string
           documents: string[] | null
           full_name: string
@@ -37,6 +38,7 @@ export type Database = {
           clinic: string
           consultant: string
           created_at?: string
+          created_by?: string | null
           doctor: string
           documents?: string[] | null
           full_name: string
@@ -55,6 +57,7 @@ export type Database = {
           clinic?: string
           consultant?: string
           created_at?: string
+          created_by?: string | null
           doctor?: string
           documents?: string[] | null
           full_name?: string
@@ -119,6 +122,7 @@ export type Database = {
           id: string
           updated_at: string
           user_id: string
+          username: string | null
         }
         Insert: {
           created_at?: string
@@ -126,6 +130,7 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id: string
+          username?: string | null
         }
         Update: {
           created_at?: string
@@ -133,6 +138,7 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
+          username?: string | null
         }
         Relationships: []
       }
